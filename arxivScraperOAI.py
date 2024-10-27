@@ -6,6 +6,9 @@
 #      The arXiv metadata captured includes: ID, title, authors, creation date, categories, abstract.
 # Here is an example of the XML data in arXiv format:
 #     http://export.arxiv.org/oai2?verb=GetRecord&identifier=oai:arXiv.org:0804.2273&metadataPrefix=arXiv
+# Here are their example scripts, which I started with:
+#    https://info.arxiv.org/help/api/examples/python_arXiv_paging_example.txt
+#    https://info.arxiv.org/help/api/examples/python_arXiv_parsing_example.txt
 
 import xml.etree.ElementTree as ET
 import requests
