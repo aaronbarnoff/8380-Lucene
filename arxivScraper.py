@@ -101,46 +101,46 @@ while start < end:
         with open(f'{fileName}', "w") as file:
 
             # record metadata to file in a way that is easy to index
-            file.write(f"Arxiv_ID: {entry.id}\n")
-            file.write(f"Published: {entry.published}\n")
-            file.write(f"Updated: {entry.updated}\n")
-            file.write(f"Title: {entry.title}\n")
+            file.write(f"<Arxiv_ID>{entry.id}</Arxiv_ID>\n")
+            file.write(f"<Published>{entry.published}</Published>\n")
+            file.write(f"<Updated>{entry.updated}</Updated>\n")
+            file.write(f"<Title>{entry.title}</Title>\n")
 
             try:
-                file.write(f"Authors: {', '.join(author.name for author in entry.authors)}\n")
+                file.write(f"<Authors>{', '.join(author.name for author in entry.authors)}</Authors>\n")
             except AttributeError:
-                file.write(f"Authors: None\n")
+                file.write(f"<Authors>None</Authors>\n")
 
             try:
                 doi = entry.arxiv_doi
             except AttributeError:
                 doi = 'None'
-            file.write(f"DOI: {doi}\n")
+            file.write(f"<DOI>{doi}</DOI>\n")
 
             # Get the links to the abs page and PDF for this e-print
             for link in entry.links:
                 if link.rel == 'alternate':
-                    file.write(f"Abstract_Link: {link.href}\n")
+                    file.write(f"<Abstract_Link>{link.href}</Abstract_Link>\n")
                 elif link.title == 'pdf':
-                    file.write(f"PDF_Link: {link.href}\n")     
+                    file.write(f"<PDF_Link>{link.href}</PDF_Link>\n")     
 
             try:
                 journal_ref = entry.arxiv_journal_ref # journal reference to arxiv paper
             except AttributeError:
                 journal_ref = 'None'
-            file.write(f"Journal_Ref: {journal_ref}\n")
+            file.write(f"<Journal_Ref>{journal_ref}</Journal_Ref>\n")
 
             try:
                 comment = entry.arxiv_comment # author's comment
             except AttributeError:
                 comment = 'None'
-            file.write(f"Comments: {comment}\n")
+            file.write(f"<Comments>{comment}</Comments>\n")
 
-            file.write(f"Primary Category: {entry.tags[0]['term']}\n")
+            file.write(f"<Primary_Category>{entry.tags[0]['term']}</Primary_Category>\n")
             all_categories = [t['term'] for t in entry.tags]
-            file.write(f"All Categories: {', '.join(all_categories)}\n")
+            file.write(f"<All_Categories>{', '.join(all_categories)}</All_Categories>\n")
 
-            file.write(f"Abstract: {entry.summary}\n")
+            file.write(f"<Abstract>{entry.summary}</Abstract>\n")
             file.close()
 
     logging.info(f"Progress: {min(start, end)}/{end} papers.")
