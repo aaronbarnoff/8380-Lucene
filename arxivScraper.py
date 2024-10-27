@@ -3,6 +3,9 @@
 # Basic error checking and delays are implemented to avoid violating their flow control and DDoS protection.
 # The script creates an arxivPapers folder and creates a .txt file for each record listing the metadata.
 #      The arXiv metadata captured includes: ID, title, authors, creation date, categories, abstract, pdf Links
+# Here are their example scripts, which I started with:
+#    https://info.arxiv.org/help/api/examples/python_arXiv_paging_example.txt
+#    https://info.arxiv.org/help/api/examples/python_arXiv_parsing_example.txt
 
 import feedparser
 import urllib
