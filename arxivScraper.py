@@ -3,9 +3,6 @@
 # Basic error checking and delays are implemented to avoid violating their flow control and DDoS protection.
 # The script creates an arxivPapers folder and creates a .txt file for each record listing the metadata.
 #      The arXiv metadata captured includes: ID, title, authors, creation date, categories, abstract, pdf Links
-# Here are their example scripts, which I started with:
-#    https://info.arxiv.org/help/api/examples/python_arXiv_paging_example.txt
-#    https://info.arxiv.org/help/api/examples/python_arXiv_parsing_example.txt
 
 import feedparser
 import urllib
@@ -14,7 +11,7 @@ import time
 import logging
 
 start = 0       # Which result to start at, e.g. 0 or 10001
-amount = 2000   # How many to retrieve per request; they limit this to 2000
+amount =  2000  # How many to retrieve per request; they limit this to 2000
 end = 10000     # Which result to end at, e.g. 10000 or 20000
 
 # List of all the computer science categories
@@ -22,7 +19,7 @@ csCats = "AI AR CC CE CG CL CR CV CY DB DC DL DM DS ET"
 "FL GL GR GT HC IR IT LG LO MA MM MS NA NE NI OH"
 "OS PF PL RO SC SD SE SI SY"
 
-# Ccreate the query to search all cs categories e.g. "cat:cs.AI OR cat:.SE OR ..."
+# Create the query to search all cs categories e.g. "cat:cs.AI OR cat:.SE OR ..."
 catQuery = ''.join(['cat:cs.' + cat + '+OR+' for cat in csCats.split(" ")]).removesuffix('+OR+')
 
 # Implement some basic logging, especially to ensure the server requests are correct
@@ -34,31 +31,31 @@ logging.basicConfig(
 )
 
 papersFolder = "arxivPapers"
-os.makedirs(papersFolder,exist_ok=True)
+os.makedirs(papersFolder, exist_ok=True)
 
 # These settings are to help avoid triggering any kind of DDoS protection (from 429 or 503 "retry-after" requests)
-request_delay = 3   # They specify a 3 second delay minimum
+request_delay = 1   # They specify a 3 second delay minimum
 backoff_factor = 2  # Basic exponential backoff 
 max_retries = 3     # For non 503 errors
 
 base_url = 'http://export.arxiv.org/api/query?' # base URL for arXiv API
 
 while start < end:
-    query = 'search_query={}&start={}&max_results={}'.format(catQuery,start,amount)
-    start = start + amount
+    query = 'search_query={}&start={}&max_results={}'.format(catQuery, start, amount)
+    full_url = base_url + query
+    logging.info(f"Requesting URL: {full_url}")
     try:
         for attempt in range(max_retries):
-            #logging.info(f"Initiating request.")
-            response = urllib.request.urlopen(base_url + query)
+            response = urllib.request.urlopen(full_url)
 
             # Check status codes
-            if response.getcode() == 200: # Request acknowledged.
+            if response.getcode() == 200:  # Request acknowledged.
                 break  
-            elif response.getcode() == [429, 503]: # This is to avoid their server interpreting our requests as a DDoS attack.
+            elif response.getcode() in [429, 503]:  # This is to avoid their server interpreting our requests as a DDoS attack.
                 retry_after = int(response.headers.get("Retry-After", request_delay))
-                logging.warning(f"429 Too Many Requests. Retrying after {retry_after} seconds...")
+                logging.warning(f"{response.getcode()} Too Many Requests. Retrying after {retry_after} seconds...")
                 time.sleep(retry_after)
-            elif 500 <= response.getcode() < 600: # Basic exponential backoff to avoid spamming them.
+            elif 500 <= response.getcode() < 600:  # Basic exponential backoff to avoid spamming them.
                 logging.warning(f"Server error {response.getcode()}. Retrying...")
                 time.sleep(request_delay * (backoff_factor ** attempt))
             else:
@@ -67,84 +64,93 @@ while start < end:
         else:
             logging.error("Max retries reached. Stopping requests.")
             break
+
+        # Parse the response using feedparser
+        feed = feedparser.parse(response)
+        logging.info(f"Fetched {len(feed.entries)} papers.")
+
+        # Print out feed information
+        if start == 0:
+            logging.info('Feed title: {}'.format(feed.feed.title))
+            logging.info('Feed last updated: {}'.format(feed.feed.updated))
+            logging.info('Total results: {}'.format(feed.feed.opensearch_totalresults))
+            logging.info('Items per page: {}'.format(feed.feed.opensearch_itemsperpage))
+        logging.info('Start index: {}'.format(feed.feed.opensearch_startindex))
+
+        # Run through each entry and write out information
+        for entry in feed.entries:
+            author_string = entry.author
+            
+            try:
+                author_string += ' ({})'.format(entry.arxiv_affiliation)  # author's affiliations
+            except AttributeError:
+                pass
+
+            # Make file in index for this paper
+            fileName = os.path.join(papersFolder, f"arxiv_{entry.id.split('/abs/')[-1].replace('/', '_')}.txt")
+            if os.path.exists(fileName):
+                logging.info('Paper already exists.')
+                continue
+
+            with open(f'{fileName}', "w", encoding="utf-8") as file:
+                # Record metadata to file in a way that is easy to index
+                id = entry.id.replace("\n", ' ')  # Remove newlines from the entries, helpful for indexing
+                published = entry.published.replace('\n', ' ')
+                updated = entry.updated.replace('\n', ' ')
+                title = entry.title.replace('\n', ' ')
+
+                file.write(f"Arxiv_ID:{id}\n")
+                file.write(f"Published:{published}\n")
+                file.write(f"Updated:{updated}\n")
+                file.write(f"Title:{title}\n")
+
+                try:
+                    author_names = ', '.join(author.name.replace('\n', ' ') for author in entry.authors)
+                    file.write(f"Authors:{author_names}\n")
+                except AttributeError:
+                    file.write(f"Authors:None\n")
+
+                try:
+                    doi = entry.arxiv_doi.replace('\n', ' ')
+                except AttributeError:
+                    doi = 'None'
+                file.write(f"DOI:{doi}\n")
+
+                # Get the links to the abs page and PDF for this e-print
+                for link in entry.links:
+                    linkR = link.href.replace('\n', ' ')
+                    if link.rel == 'alternate':
+                        file.write(f"Abstract_Link:{linkR}\n")
+                    elif link.title == 'pdf':
+                        file.write(f"PDF_Link:{linkR}\n")     
+
+                try:
+                    journal_ref = entry.arxiv_journal_ref.replace('\n', ' ')  # Journal reference to arxiv paper
+                except AttributeError:
+                    journal_ref = 'None'
+                file.write(f"Journal_Ref:{journal_ref}\n")
+
+                try:
+                    comment = entry.arxiv_comment.replace('\n', ' ')  # Author's comment
+                except AttributeError:
+                    comment = 'None'
+                file.write(f"Comments:{comment}\n")
+        
+                pCat = entry.tags[0]['term'].replace('\n', ' ')
+                file.write(f"Primary_Category:{pCat}\n")
+                all_categories = [t['term'].replace('\n', ' ') for t in entry.tags]
+                file.write(f"All_Categories:{', '.join(all_categories)}\n")
+
+                abs = entry.summary.replace('\n', ' ')
+                file.write(f"Abstract:{abs}\n")
+
+        # Increment start after successfully processing entries
+        start += amount
+
+        logging.info(f"Progress: {min(start, end)}/{end} papers.")
+        time.sleep(request_delay)
+
     except urllib.error.HTTPError as e:
         logging.error(f"HTTP Error: {e.code}")
     except urllib.error.URLError as e:
         logging.error(f"URL Error: {e.reason}")
-
-    # Parse the response using feedparser
-    feed = feedparser.parse(response)
-    #logging.info(feed)
-
-    # Print out feed information
-    if start == 0:
-        logging.info('Feed title: {}'.format(feed.feed.title))
-        logging.info('Feed last updated: {}'.format(feed.feed.updated))
-        logging.info('Total results: {}'.format(feed.feed.opensearch_totalresults))
-        logging.info('Items per page: {}'.format(feed.feed.opensearch_itemsperpage))
-    logging.info('Start index: {}'.format(feed.feed.opensearch_startindex))
-
-    # Run through each entry and print out information
-    for entry in feed.entries:
-        author_string = entry.author
-        
-        try:
-            author_string += ' ({})'.format(entry.arxiv_affiliation) # author's affiliations
-        except AttributeError:
-            pass
-
-        #logging.info(entry) # debug: to see the full record
-
-        # make file in index for this paper
-        fileName = os.path.join(papersFolder, f"arxiv_{entry.id.split('/abs/')[-1].replace('/', '_')}.txt")
-        if os.path.exists(fileName):
-            logging.info('Paper already exists.')
-            continue
-
-        with open(f'{fileName}', "w") as file:
-
-            # record metadata to file in a way that is easy to index
-            file.write(f"<Arxiv_ID>{entry.id}</Arxiv_ID>\n")
-            file.write(f"<Published>{entry.published}</Published>\n")
-            file.write(f"<Updated>{entry.updated}</Updated>\n")
-            file.write(f"<Title>{entry.title}</Title>\n")
-
-            try:
-                file.write(f"<Authors>{', '.join(author.name for author in entry.authors)}</Authors>\n")
-            except AttributeError:
-                file.write(f"<Authors>None</Authors>\n")
-
-            try:
-                doi = entry.arxiv_doi
-            except AttributeError:
-                doi = 'None'
-            file.write(f"<DOI>{doi}</DOI>\n")
-
-            # Get the links to the abs page and PDF for this e-print
-            for link in entry.links:
-                if link.rel == 'alternate':
-                    file.write(f"<Abstract_Link>{link.href}</Abstract_Link>\n")
-                elif link.title == 'pdf':
-                    file.write(f"<PDF_Link>{link.href}</PDF_Link>\n")     
-
-            try:
-                journal_ref = entry.arxiv_journal_ref # journal reference to arxiv paper
-            except AttributeError:
-                journal_ref = 'None'
-            file.write(f"<Journal_Ref>{journal_ref}</Journal_Ref>\n")
-
-            try:
-                comment = entry.arxiv_comment # author's comment
-            except AttributeError:
-                comment = 'None'
-            file.write(f"<Comments>{comment}</Comments>\n")
-
-            file.write(f"<Primary_Category>{entry.tags[0]['term']}</Primary_Category>\n")
-            all_categories = [t['term'] for t in entry.tags]
-            file.write(f"<All_Categories>{', '.join(all_categories)}</All_Categories>\n")
-
-            file.write(f"<Abstract>{entry.summary}</Abstract>\n")
-            file.close()
-
-    logging.info(f"Progress: {min(start, end)}/{end} papers.")
-    time.sleep(request_delay)
